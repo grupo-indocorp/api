@@ -1,0 +1,6 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/xdsdw07tvnp4/apiclientes.indotechsac.com/
+    - /usr/bin/rsync -av --exclude='index.php' public/ $DEPLOYPATH/
+    - cp public/index.cpanel.php $DEPLOYPATH/index.php

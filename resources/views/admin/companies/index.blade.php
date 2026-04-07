@@ -10,6 +10,11 @@
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900 dark:text-gray-100">
                     <a href="{{ route('companies.create') }}" class="text-green-600 hover:text-green-800">Crear</a>
+
+                    @if(session('token'))
+                        <p>Token: {{ session('token') }}</p>
+                    @endif
+
                     <table class="min-w-full border border-gray-200">
                         <thead class="bg-gray-100">
                             <tr>

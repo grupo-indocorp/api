@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ClientController extends Controller
 {
@@ -15,7 +16,9 @@ class ClientController extends Controller
     {
         $company = request()->user(); // Empresa autenticada
 
-        return Client::where('company_id', $company->id)->get();
+        return Client::with('contacts.phones', 'comments')
+            ->where('company_id', $company->id)
+            ->get();
     }
 
     /**
@@ -49,9 +52,54 @@ class ClientController extends Controller
             'supervisor' => 'nullable|string',
             'tipo_base' => 'nullable|string',
             'fecha_gestion' => 'nullable|string',
+
+            // CONTACTOS
+            'contacts' => 'nullable|array',
+            'contacts.*.dni' => 'nullable|string',
+            'contacts.*.nombre_completo' => 'required|string',
+            'contacts.*.correo_electronico' => 'nullable|email',
+            'contacts.*.cargo' => 'nullable|string',
+
+            // TELÉFONOS
+            'contacts.*.phones' => 'nullable|array',
+            'contacts.*.phones.*.numero' => 'required|string',
+            'contacts.*.phones.*.tipo' => 'nullable|string',
+
+            // COMENTARIOS
+            'comments' => 'nullable|array',
+            'comments.*.company_id' => 'required|exists:companies,id',
+            'comments.*.external_crm' => 'required|string',
+            'comments.*.external_user_id' => 'required|string',
+            'comments.*.ejecutivo_nombre' => 'required|string',
+            'comments.*.comentario' => 'required|string',
+            'comments.*.etiqueta' => 'nullable|string',
         ]);
 
-        return Client::create($data);
+        $client = Client::create($data);
+
+        if (!empty($data['contacts'])) {
+            foreach ($data['contacts'] as $contactData) {
+                $phones = $contactData['phones'] ?? [];
+                unset($contactData['phones']);
+
+                $contact = $client->contacts()->create($contactData);
+
+                foreach ($phones as $phone) {
+                    $contact->phones()->create($phone);
+                }
+            }
+        }
+
+        if (!empty($data['comments'])) {
+            foreach ($data['comments'] as $comment) {
+                $client->comments()->create($comment);
+            }
+        }
+
+        return response()->json(
+            $client->load('contacts.phones', 'comments'),
+            201
+        );
     }
 
     /**
@@ -94,9 +142,84 @@ class ClientController extends Controller
             'fecha_gestion' => 'nullable|string',
         ]);
 
-        $client->update($data);
+        DB::transaction(function () use ($client, $data) {
+            $client->update($data);
 
-        return $client;
+            $existingContactIds = $client->contacts()->pluck('id')->toArray();
+            $sentContactIds = [];
+
+            if (!empty($data['contacts'])) {
+                foreach ($data['contacts'] as $contactData) {
+                    $phones = $contactData['phones'] ?? [];
+                    unset($contactData['phones']);
+
+                    // UPDATE o CREATE
+                    if (isset($contactData['id'])) {
+                        $contact = $client->contacts()->find($contactData['id']);
+                        if ($contact) {
+                            $contact->update($contactData);
+                            $sentContactIds[] = $contact->id;
+                        }
+                    } else {
+                        $contact = $client->contacts()->create($contactData);
+                        $sentContactIds[] = $contact->id;
+                    }
+
+                    // 👉 UPDATE PHONES
+                    $existingPhoneIds = $contact->phones()->pluck('id')->toArray();
+                    $sentPhoneIds = [];
+
+                    foreach ($phones as $phoneData) {
+                        if (isset($phoneData['id'])) {
+                            $phone = $contact->phones()->find($phoneData['id']);
+                            if ($phone) {
+                                $phone->update($phoneData);
+                                $sentPhoneIds[] = $phone->id;
+                            }
+                        } else {
+                            $phone = $contact->phones()->create($phoneData);
+                            $sentPhoneIds[] = $phone->id;
+                        }
+                    }
+
+                    // ❌ eliminar phones que ya no vienen
+                    $phonesToDelete = array_diff($existingPhoneIds, $sentPhoneIds);
+                    $contact->phones()->whereIn('id', $phonesToDelete)->delete();
+                }
+            }
+
+            // ❌ eliminar contactos que ya no vienen
+            $contactsToDelete = array_diff($existingContactIds, $sentContactIds);
+            $client->contacts()->whereIn('id', $contactsToDelete)->delete();
+
+
+            $existingCommentIds = $client->comments()->pluck('id')->toArray();
+            $sentCommentIds = [];
+
+            if (!empty($data['comments'])) {
+                foreach ($data['comments'] as $commentData) {
+                    if (isset($commentData['id'])) {
+                        $comment = $client->comments()->find($commentData['id']);
+                        if ($comment) {
+                            $comment->update($commentData);
+                            $sentCommentIds[] = $comment->id;
+                        }
+                    } else {
+                        $comment = $client->comments()->create($commentData);
+                        $sentCommentIds[] = $comment->id;
+                    }
+                }
+            }
+
+            // ❌ eliminar comentarios eliminados
+            $commentsToDelete = array_diff($existingCommentIds, $sentCommentIds);
+            $client->comments()->whereIn('id', $commentsToDelete)->delete();
+        });
+
+        return response()->json(
+            $client->load('contacts.phones', 'comments'),
+            200
+        );
     }
 
     /**

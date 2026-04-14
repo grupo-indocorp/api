@@ -123,6 +123,36 @@ Content-Type: application/json
     "supervisor": "laravel",
     "tipo_base": "sistema",
     "fecha_gestion": "2026/04/18"
+
+    "contacts": [
+        {
+            "dni": "12345678",
+            "nombre_completo": "Juan Perez",
+            "correo_electronico": "juan@mail.com",
+            "cargo": "Gerente",
+            "phones": [
+                {
+                    "numero": "999888777",
+                    "tipo": "movil"
+                },
+                {
+                    "numero": "014445566",
+                    "tipo": "fijo"
+                }
+            ]
+        }
+    ],
+
+    "comments": [
+        {
+            "company_id": 1,
+            "external_crm": "hubspot",
+            "external_user_id": "USR001",
+            "ejecutivo_nombre": "Carlos",
+            "comentario": "Cliente interesado",
+            "etiqueta": "caliente"
+        }
+    ]
 }
 </pre>
 

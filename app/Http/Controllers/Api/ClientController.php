@@ -15,10 +15,11 @@ class ClientController extends Controller
     public function index()
     {
         $company = request()->user(); // Empresa autenticada
+        $perPage = request('per_page', 10);
 
         return Client::with('contacts.phones', 'comments')
             ->where('company_id', $company->id)
-            ->get();
+            ->paginate($perPage);
     }
 
     /**
@@ -26,8 +27,8 @@ class ClientController extends Controller
      */
     public function store(Request $request)
     {
+        $companyId = request()->user()->id;
         $data = $request->validate([
-            'company_id' => 'required|exists:companies,id',
             'identificacion_tipo' => 'nullable|string',
             'identificacion' => 'nullable|string',
             'razon_social' => 'nullable|string',
@@ -67,13 +68,17 @@ class ClientController extends Controller
 
             // COMENTARIOS
             'comments' => 'nullable|array',
-            'comments.*.company_id' => 'required|exists:companies,id',
             'comments.*.external_crm' => 'required|string',
             'comments.*.external_user_id' => 'required|string',
             'comments.*.ejecutivo_nombre' => 'required|string',
+            'comments.*.equipo' => 'required|string',
+            'comments.*.supervisor' => 'required|string',
             'comments.*.comentario' => 'required|string',
             'comments.*.etiqueta' => 'nullable|string',
+            'comments.*.tipo_contactabilidad' => 'nullable|string',
+            'comments.*.estado_etapa' => 'nullable|string',
         ]);
+        $data['company_id'] = $companyId;
 
         $client = Client::create($data);
 
@@ -92,22 +97,30 @@ class ClientController extends Controller
 
         if (!empty($data['comments'])) {
             foreach ($data['comments'] as $comment) {
+                $comment['company_id'] = $companyId;
                 $client->comments()->create($comment);
             }
         }
 
-        return response()->json(
-            $client->load('contacts.phones', 'comments'),
-            201
-        );
+        return response()->json([
+            'message' => 'Cliente registrado correctamente',
+            'data' => $client->load('contacts.phones', 'comments')
+        ], 201);
     }
 
     /**
      * Display the specified resource.
      */
-    public function show(Client $client)
+    public function show($id)
     {
-        return $client->load('company');
+        $companyId = request()->user()->id;
+        $client = Client::where('company_id', $companyId)
+            ->with('contacts.phones', 'comments')
+            ->findOrFail($id);
+
+        return response()->json([
+            'data' => $client
+        ], 200);
     }
 
     /**
